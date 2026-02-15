@@ -37,3 +37,14 @@ def create_schema():
         );
     """)
 
+ # 2. Zones
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS zones (
+            LocationID INTEGER PRIMARY KEY,
+            Borough TEXT,
+            Zone TEXT,
+            service_zone TEXT       
+        );
+    """)
+
