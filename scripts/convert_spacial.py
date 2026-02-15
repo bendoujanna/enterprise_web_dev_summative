@@ -31,7 +31,7 @@ def convert_shapefile():
         print(f"   Saving to {OUTPUT_FILE}...")
         gdf.to_file(OUTPUT_FILE, driver="GeoJSON")
 
-print("Success! Map data is ready for the Frontend.")
+        print("Success! Map data is ready for the Frontend.")
 
     except Exception as e:
         print(f"Error during conversion: {e}")
