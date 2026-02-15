@@ -26,3 +26,14 @@ def create_schema():
     # enable foreigh keys
     cursor.execute("PRAGMA foreign_keys = ON;")
 
+ # TABLES
+
+    # 1. vendors
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vendors (
+           VendorID INTEGER PRIMARY KEY,
+           vendor_name TEXT NOT NULL
+        );
+    """)
+
