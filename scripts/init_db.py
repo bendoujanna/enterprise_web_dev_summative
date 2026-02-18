@@ -52,7 +52,7 @@ def create_schema():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS trips (
             trip_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            VendorID INTEGER,
+            VendorID INTEGER NOT NULL,
             PULocationID INTEGER,
             DOLocationID INTEGER,
             tpep_pickup_datetime TEXT,
@@ -69,7 +69,7 @@ def create_schema():
             tolls_amount DECIMAL(10,2),
             improvement_surcharge DECIMAL(10,2),
             total_amount DECIMAL(10, 2),
-            congestion_surcharge DECIMAL(10,2),
+            congestion_surcharge DECIMAL(10,2) NOT NULL DEFAULT 0.00,
             trip_duration_seconds INTEGER,
             average_speed_mph DECIMAL(10,2),
             time_of_day TEXT,

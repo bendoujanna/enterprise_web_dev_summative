@@ -1,210 +1,176 @@
-import csv
+import pandas as pd
 import os
 import sqlite3
-from datetime import datetime
+import numpy as np
 
-# --- cONFIGURATION ---
-# Paths
+# Configuration
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
-# Temporary Safe Path
-DB_PATH = os.path.expanduser("database.db")
-
-# Input paths
-DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
-TRIPS_FILE = os.path.join(DATA_DIR, 'yellow_tripdata_2019-01.csv')
-ZONE_FILE = os.path.join(DATA_DIR, 'taxi_zone_lookup.csv')
-LOG_FILE = os.path.join(PROJECT_ROOT, 'output', 'suspicious_records.log')
-
-
-# Helper functions
-def calculate_features(pickup_str, dropoff_str, distance_miles):
-    """Computes the duration, speed, and time category"""
-
-    format = "%Y-%m-%d %H:%M:%S"
-    try:
-        t1 = datetime.strptime(pickup_str, format)
-        t2 = datetime.strptime(dropoff_str, format)
-        duration = (t2 - t1).total_seconds()
-
-        # categorise time of day
-        hour = t1.hour
-        if 6 <= hour < 12:
-            time_cat = 'Morning'
-        elif 12 <= hour < 17:
-            time_cat = 'Afternoon'
-        elif 17 <= hour < 21:
-            time_cat = 'Evening'
-        else:
-            time_cat = 'Night'
-
-        # calculate speed (mph)
-        if duration <= 0 or distance_miles <= 0:
-            return None, None, None  # Invalid data
-
-        hours = duration / 3600
-        speed = distance_miles / hours
-
-        return int(duration), round(speed, 2), time_cat
-
-    except:
-        return None, None, None  # In case of parsing errors
+DB_PATH = os.path.join(PROJECT_ROOT, "database.db")
+TRIPS_FILE = os.path.join(PROJECT_ROOT, 'data', 'yellow_tripdata_2019-01.parquet')
+# TRIPS_FILE = os.path.join(PROJECT_ROOT, 'data', 'yellow_tripdata_2019-01.csv')
+ZONE_FILE = os.path.join(PROJECT_ROOT, 'data', 'taxi_zone_lookup.csv')
+TRIPS_FILE = os.path.join(PROJECT_ROOT, 'data', 'yellow_tripdata_2019-01.parquet')
+LOG_DIR = os.path.join(PROJECT_ROOT, 'output')
+LOG_FILE = os.path.join(LOG_DIR, 'suspicious_records.log')
 
 
 def run_pipeline():
-    print("Starting ETL Pipeline...")
+    print(f"Starting ETL Pipeline...")
+    print(f"Database Path: {DB_PATH}")
 
-    # check if db exists
-    if not os.path.exists(DB_PATH):
-        print(f"Error: Database not found at {DB_PATH}")
-        print("Make sure you ran init_db.py first")
-        return
+    # Ensure output directory exists
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR)
 
-    # Load zones
+    conn = sqlite3.connect(DB_PATH)
+
+    # 1. Load Zones
     valid_zones = set()
-    print(f"Loading zones from {ZONE_FILE}...")
-
     try:
-        # URI=True allows us to pass special parameters
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        print("Loading zones...")
+        if os.path.exists(ZONE_FILE):
+            zones_df = pd.read_csv(ZONE_FILE)
+            # Create zones table if it doesn't exist
+            zones_df.to_sql('zones', conn, if_exists='replace', index=False)
+            valid_zones = set(zones_df['LocationID'].unique())
+            print(f"Loaded {len(zones_df)} zones.")
+        else:
+            print(f"Warning: Zone file not found at {ZONE_FILE}. Skipping zone validation.")
+    except Exception as e:
+        print(f"Zone Error: {e}")
 
-        with open(ZONE_FILE, 'r') as f:
-            reader = csv.DictReader(f)
-            zone_rows = []
-            for row in reader:
-                lid = int(row['LocationID'])
-                valid_zones.add(lid)
-                zone_rows.append((lid, row['Borough'], row['Zone'], row['service_zone']))
+    # 2. Process Trips
+    print("Processing Data...")
+    try:
+        # Load Data (Adjust for CSV or Parquet)
+        if TRIPS_FILE.endswith('.parquet'):
+            df = pd.read_parquet(TRIPS_FILE)
+        else:
+            df = pd.read_csv(TRIPS_FILE)
 
-            cursor.execute("DELETE FROM zones;")  # Clear existing data
-            cursor.executemany("INSERT INTO zones VALUES (?, ?, ?, ?);", zone_rows)
-            conn.commit()
-            print(f"Loaded {len(zone_rows)} zones into the database")
+        # Precalculations
+        df['tpep_pickup_datetime'] = pd.to_datetime(df['tpep_pickup_datetime'])
+        df['tpep_dropoff_datetime'] = pd.to_datetime(df['tpep_dropoff_datetime'])
+
+        # Calculate Duration (Seconds)
+        df['trip_duration_seconds'] = (df['tpep_dropoff_datetime'] - df['tpep_pickup_datetime']).dt.total_seconds()
+
+        # Calculate Speed (MPH)
+        # Handle division by zero using numpy to avoid crash, then fill NA
+        df['speed_mph'] = (df['trip_distance'] / (df['trip_duration_seconds'] / 3600))
+        df['speed_mph'] = df['speed_mph'].replace([np.inf, -np.inf], 0).fillna(0)
+        df['average_speed_mph'] = df['speed_mph']
+
+        # suspicious data
+
+        # 1. Fare Outlier / Price Gouging (Fixes $185/0.4mi bug)
+        # Rejects trips that cost more than $50 but went less than 0.5 miles
+        mask_price_anomaly = (df['total_amount'] > 50) & (df['trip_distance'] < 0.5)
+
+        # 2. Impossible Short-Distance Speed
+        # Rejects trips < 1.0 mile with speeds > 30 mph
+        mask_short_speed = (df['trip_distance'] < 1.0) & (df['average_speed_mph'] > 30)
+
+        # 3. Standard Zero Distance/High Fare
+        mask_distance = (df['trip_distance'] <= 0.1) & (df['total_amount'] > 10.0)
+
+        # 4. Negative/Zero Fares
+        mask_fare = df['total_amount'] <= 0
+
+        # 5. Invalid Duration (Negative time or > 12 hours)
+        mask_time = (df['trip_duration_seconds'] <= 0) | (df['trip_duration_seconds'] > 43200)
+
+        # 6. Extreme Speed (> 100 mph overall)
+        mask_speed = (df['average_speed_mph'] > 100) | (df['average_speed_mph'] < 0)
+
+        # 7. Unknown Zones
+        if valid_zones:
+            mask_zone = (~df['PULocationID'].isin(valid_zones)) | \
+                        (~df['DOLocationID'].isin(valid_zones))
+        else:
+            mask_zone = pd.Series([False] * len(df))
+
+        # Combine all masks including the rules
+        mask_suspicious = (mask_price_anomaly | mask_short_speed | mask_distance |
+                           mask_fare | mask_time | mask_speed | mask_zone)
+
+        # Log suspicious records
+        bad_count = mask_suspicious.sum()
+        if bad_count > 0:
+            print(f"Found {bad_count} suspicious records.")
+            bad_df = df[mask_suspicious].copy()
+
+            # Updated labels to reflect the logic
+            conditions = [
+                mask_price_anomaly[mask_suspicious],
+                mask_short_speed[mask_suspicious],
+                mask_distance[mask_suspicious],
+                mask_fare[mask_suspicious],
+                mask_speed[mask_suspicious],
+                mask_time[mask_suspicious],
+                mask_zone[mask_suspicious]
+            ]
+
+            choices = [
+                'Fare Outlier (Short Trip)',
+                'Impossible Short Speed',
+                'Zero Distance/High Fare',
+                'Negative/Zero Fare',
+                'Extreme Speed',
+                'Invalid Duration',
+                'Unknown Zone'
+            ]
+
+            bad_df['rejection_reason'] = np.select(conditions, choices, default='Unknown')
+            bad_df.to_csv(LOG_FILE, index=False)
+            print(f"  - Logged to {LOG_FILE}")
+
+        # --- D. Filter & Save Clean Data ---
+        df_clean = df[~mask_suspicious].copy()
+
+        # E. Feature Engineering
+        hours = df_clean['tpep_pickup_datetime'].dt.hour
+        df_clean['time_of_day'] = pd.cut(hours,
+                                         bins=[-1, 5, 11, 16, 20, 24],
+                                         labels=['Night', 'Morning', 'Afternoon', 'Evening', 'Night'],
+                                         ordered=False)
+
+        # Ensure columns match DB schema
+        cols_to_save = [
+            'VendorID', 'tpep_pickup_datetime', 'tpep_dropoff_datetime', 'passenger_count',
+            'trip_distance', 'RatecodeID', 'store_and_fwd_flag', 'PULocationID', 'DOLocationID',
+            'payment_type', 'fare_amount', 'extra', 'mta_tax', 'tip_amount', 'tolls_amount',
+            'improvement_surcharge', 'total_amount', 'congestion_surcharge',
+            'trip_duration_seconds', 'average_speed_mph', 'time_of_day'
+        ]
+
+        # Handle missing columns safely
+        for col in cols_to_save:
+            if col not in df_clean.columns:
+                df_clean[col] = 0  # Default value if missing
+        if 'congestion_surcharge' in df_clean.columns:
+            df_clean['congestion_surcharge'] = df_clean['congestion_surcharge'].fillna(0.00)
+
+
+        print("Saving clean data to Database...")
+
+        # Clear old data to verify the filter works
+        conn.execute("DELETE FROM trips")
+
+        # Insert new clean data
+        df_clean[cols_to_save].to_sql('trips', conn, if_exists='append', index=False, chunksize=10000)
+
+        conn.commit()
+        print(f"Success! ETL Completed.")
+        print(f"Total Rows Processed: {len(df)}")
+        print(f"Clean Rows Inserted:  {len(df_clean)}")
+        print(f"Rejected Rows:        {bad_count}")
 
     except Exception as e:
-        print(f"Error loading zones: {e}")
-        return
-
-    # Process trips
-    print("Processing trips... This may take a moment")
-
-    batch_data = []
-    bad_count = 0
-    total_count = 0
-
-    try:
-
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-
-        cursor.execute("PRAGMA synchronous = OFF")
-        cursor.execute("PRAGMA journal_mode = MEMORY")
-
-        with open(TRIPS_FILE, 'r') as f:
-            reader = csv.DictReader(f)
-            with open(LOG_FILE, 'w') as log:
-                log.write("Reason, RawData\n")  # CSV header for log file
-                for row in reader:
-                    # if total_count >= 500000:
-                    #     print(f"\n Fast Mode limit reached (500,000 rows). Stopping.")
-                    #     break
-                    try:
-                        # ectract basic fields
-                        pul = int(row['PULocationID'])
-                        dol = int(row['DOLocationID'])
-                        fare = float(row['fare_amount'])
-                        dist = float(row['trip_distance'])
-
-                        # cleaning data
-                        # 1; negative fare
-                        if fare < 0:
-                            log.write(f"Negative fare, {row}\n")
-                            bad_count += 1
-                            continue
-
-                        # 2. unknown zones
-                        if pul not in valid_zones or dol not in valid_zones:
-                            log.write(f"Unknown zone, {row}\n")
-                            bad_count += 1
-                            continue
-
-                        # 3. calculate features
-                        duration, speed, time_cat = calculate_features(
-                            row['tpep_pickup_datetime'],
-                            row['tpep_dropoff_datetime'],
-                            dist
-                        )
-
-                        if duration is None:
-                            log.write(f"Time reversal, {row}\n")
-                            bad_count += 1
-                            continue
-
-                        if speed > 100:
-                            log.write(f"Extreme speed, {row}\n")
-                            bad_count += 1
-                            continue
-
-                        # prepare row for db
-
-                        batch_data.append((
-                            row['VendorID'], row['tpep_pickup_datetime'], row['tpep_dropoff_datetime'],
-                            row['passenger_count'], dist, row['RatecodeID'], row['store_and_fwd_flag'],
-                            pul, dol, row['payment_type'], fare, row['extra'], row['mta_tax'],
-                            row['tip_amount'], row['tolls_amount'], row['improvement_surcharge'],
-                            row['total_amount'], row.get('congestion_surcharge', 0),  # Default to 0 if missing
-                            duration, speed, time_cat
-                        ))
-
-                        total_count += 1
-
-                        # batch insert
-                        if len(batch_data) >= 50000:
-                            cursor.executemany("""
-                                               INSERT INTO trips (VendorID, tpep_pickup_datetime, tpep_dropoff_datetime,
-                                                                  passenger_count,
-                                                                  trip_distance, RatecodeID, store_and_fwd_flag,
-                                                                  PULocationID, DOLocationID,
-                                                                  payment_type, fare_amount, extra, mta_tax, tip_amount,
-                                                                  tolls_amount,
-                                                                  improvement_surcharge, total_amount,
-                                                                  congestion_surcharge,
-                                                                  trip_duration_seconds, average_speed_mph, time_of_day)
-                                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                               """, batch_data)
-
-                            conn.commit()
-                            batch_data = []  # Clear memory
-                            print(f"Processed {total_count} rows...", end='\r')
-
-                    except Exception as e:
-                        bad_count += 1
-                        continue
-
-                        # Insert any remaining data
-
-        if batch_data:
-            cursor.executemany("""
-                               INSERT INTO trips (VendorID, tpep_pickup_datetime, tpep_dropoff_datetime,
-                                                  passenger_count,
-                                                  trip_distance, RatecodeID, store_and_fwd_flag, PULocationID,
-                                                  DOLocationID,
-                                                  payment_type, fare_amount, extra, mta_tax, tip_amount, tolls_amount,
-                                                  improvement_surcharge, total_amount, congestion_surcharge,
-                                                  trip_duration_seconds, average_speed_mph, time_of_day)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                               """, batch_data)
-        conn.commit()
-
-        print(f"\nETL Completed!")
-        print(f"    - Successful Trips: {total_count}")
-        print(f"    - Rejected Records: {bad_count}")
-
-    except FileNotFoundError:
-        print(f"Error: Could not find data files")
-        print(f"Looking for {TRIPS_FILE}")
-        print("Make sure you downloaded the data and placed it in the 'data' folder")
+        print(f"Pipeline Critical Error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
         conn.close()
 
