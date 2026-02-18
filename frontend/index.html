@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NYC Mobility Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="light-mode"> <div class="app-wrapper">
+        <nav class="sidebar">
+            <div class="logo"><i class="fa-solid fa-car"></i> <span>NYC Mobility</span></div>
+            <ul class="nav-links">
+                <li class="active" data-view="dashboard"><i class="fa-solid fa-table-columns"></i> Dashboard</li>
+                <li data-view="analytics"><i class="fa-solid fa-chart-line"></i> Analytics</li>
+                <li data-view="quality"><i class="fa-solid fa-triangle-exclamation"></i> Data Quality</li>
+            </ul>
+            <div class="theme-switch" id="dark-mode-toggle">
+                <i class="fa-solid fa-moon"></i> <span>Dark Mode</span>
+            </div>
+        </nav>
+
+        <main class="content">
+            <section id="dashboard-view" class="view">
+                <header class="main-header">
+                    <h1>NYC Mobility Analytics</h1>
+                    <p>Real-time transportation insights</p>
+                </header>
+
+                <div class="kpi-row">
+                    <div class="card kpi">
+                        <div class="kpi-info"><h3>Total Trips</h3><div class="value" id="total-trips">--</div></div>
+                        <i class="fa-solid fa-car-side icon"></i>
+                    </div>
+                    <div class="card kpi">
+                        <div class="kpi-info"><h3>Average Fare</h3><div class="value" id="avg-fare">--</div></div>
+                        <i class="fa-solid fa-arrow-trend-up icon"></i>
+                    </div>
+                    <div class="card kpi">
+                        <div class="kpi-info"><h3>Data Health</h3><div class="value" id="quality-score">--</div>
+                            <span class="sub-text status-red" id="rejected-count-text">-- rejected records</span>
+                        </div>
+                        <i class="fa-solid fa-shield-halved icon"></i>
+                    </div>
+                </div>
+
+                <div class="chart-grid">
+                    <div class="card chart-card"><h3>Borough Demand</h3><canvas id="boroughChart"></canvas></div>
+                    <div class="card chart-card"><h3>Avg Speed vs Time of Day</h3><canvas id="speedChart"></canvas></div>
+                </div>
+
+
+
+                <div class="card table-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3>Raw Trip Records (Algorithm Sorted)</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="borough-filter">
+                                <option value="">All Boroughs</option>
+                                <option value="Manhattan">Manhattan</option>
+                                <option value="Brooklyn">Brooklyn</option>
+                                <option value="Queens">Queens</option>
+                                <option value="Bronx">Bronx</option>
+                                <option value="EWR">EWR</option>
+                                <option value="Staten Island">Staten Island</option>
+                            </select>
+                            <select id="sort-selector">
+                                <option value="total_amount">Sort by Fare</option>
+                                <option value="trip_distance">Sort by Distance</option>
+                                <option value="speed">Sort by Speed</option>
+                            </select>
+                        </div>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Borough</th>
+                                <th>Pickup</th>
+                                <th>Dropoff</th>
+                                <th>Fare</th>
+                                <th>Distance</th>
+                                <th>Speed</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trips-tbody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="analytics-view" class="view" style="display:none;">
+                <header class="main-header"><h1>Advanced Analytics</h1></header>
+                <div class="kpi-row">
+                    <div class="card kpi"><h3>Total Revenue</h3><div class="value" id="total-revenue">--</div></div>
+                    <div class="card kpi"><h3>Avg Trip Duration</h3><div class="value" id="avg-duration">--</div></div>
+                </div>
+                <div class="card chart-card full-width"><h3>Peak Hours Analysis</h3><canvas id="hourlyChart"></canvas></div>
+            </section>
+
+            <section id="quality-view" class="view" style="display:none;">
+                <header class="main-header"><h1>Data Quality Dashboard</h1></header>
+                <div class="card quality-summary">
+                    <h3>Overall Data Quality: <span id="overall-score-large">--</span></h3>
+                    <div id="issue-list"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="api.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

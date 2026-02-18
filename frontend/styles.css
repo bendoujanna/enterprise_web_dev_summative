@@ -1,0 +1,311 @@
+/*  1. Root variables */
+:root {
+    --primary-blue: #1e3c72;
+    --sidebar-bg: #2a3b8f;
+    --bg-color: #f4f6f9;
+    --card-bg: #ffffff;
+    --text-color: #333333;
+    --border-color: #e0e0e0;
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+
+    /* Status Colors */
+    --status-critical: #ff5252;
+    --status-warning: #ffb142;
+    --status-success: #33d9b2;
+}
+
+body.dark-mode {
+    --bg-color: #121212;
+    --card-bg: #1e1e1e;
+    --text-color: #e0e0e0;
+    --border-color: #333333;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    height: 100vh;
+    overflow: hidden;
+    font-size: 14px;
+}
+
+/* 2. Layout structure*/
+.app-wrapper {
+    display: flex;
+    flex-direction: row;
+    height: 100vh;
+}
+
+/* 3. Sidebar*/
+.sidebar {
+    width: 250px;
+    background-color: var(--sidebar-bg);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    height: 100vh;
+    flex-shrink: 0;
+    z-index: 10;
+}
+
+.logo {
+    font-size: 1.3rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 2rem;
+}
+
+.nav-links {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    margin-top: auto;
+    margin-bottom: auto;
+    gap: 1rem;
+}
+
+.nav-links li {
+    padding: 12px 20px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-links li:hover { background-color: rgba(255, 255, 255, 0.1); }
+.nav-links li.active { background-color: rgba(255, 255, 255, 0.2); font-weight: bold; border-left: 4px solid white; }
+
+.theme-switch {
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/*4. Main Content (Scrollable) */
+.content {
+    flex-grow: 1;
+    padding: 2rem;
+    height: 100vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* View Containers */
+#dashboard-view, #analytics-view, #quality-view {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem; /* Vertical Gap between sections */
+    padding-bottom: 2rem;
+}
+
+/*  5. KPI Cards */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 0.5rem; /* Extra safety margin */
+}
+
+.card {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+}
+
+.kpi .value { font-size: 2rem; font-weight: 700; margin-top: 5px; }
+.kpi h3 { font-size: 0.9rem; color: #888; font-weight: 500; }
+
+#rejected-count-text {
+    color: var(--status-critical);
+    font-weight: bold;
+    background-color: rgba(255, 82, 82, 0.1); /* Light red background */
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    display: inline-block;
+    margin-top: 5px;
+}
+
+/* 6. Charts */
+.chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    height: 320px;
+    flex-shrink: 0;
+}
+
+#analytics-view .chart-card {
+    height: 550px !important;
+    width: 100%;
+    max-width: 950px;
+    margin: 0 auto;
+    overflow: visible !important;
+    padding-bottom: 40px;
+}
+
+#analytics-view canvas {
+    max-height: 100%;
+    width: 100% !important;
+}
+
+.chart-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.chart-card h3 { font-size: 1rem; margin-bottom: 15px; font-weight: 600; }
+.chart-card canvas { flex-grow: 1; height: 0; }
+
+/* 7. Table */
+.table-card {
+    min-height: 450px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.table-wrapper {
+    overflow-y: auto;
+    flex-grow: 1;
+    margin-top: 10px;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th {
+    text-align: left; padding: 12px;
+    border-bottom: 2px solid var(--border-color);
+    color: #888; font-size: 0.85rem; font-weight: 600;
+    position: sticky; top: 0; background: var(--card-bg);
+}
+td { padding: 12px; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+
+/* 8. Data Quality Section */
+#quality-view .quality-summary {
+    display: block;
+}
+
+#issue-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-top: 10px;
+}
+
+.quality-item {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 10px;
+    border-left: 6px solid #ccc;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.2s;
+}
+
+.quality-item:hover { transform: translateY(-2px); }
+
+/* Border Colors*/
+.quality-item.critical { border-left-color: var(--status-critical); }
+.quality-item.warning { border-left-color: var(--status-warning); }
+.quality-item.success { border-left-color: var(--status-success); }
+
+.quality-item span { font-size: 1rem; color: #666; font-weight: 500; }
+
+/* Colored Numbers */
+.quality-item strong { font-size: 2.2rem; margin-top: 10px; color: var(--text-color); }
+.quality-item.critical strong { color: var(--status-critical); }
+.quality-item.warning strong { color: var(--status-warning); }
+.quality-item.success strong { color: var(--status-success); }
+
+.progress-bar {
+    height: 8px;
+    background: rgba(0,0,0,0.05);
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+/* 9. force dropdown */
+
+#borough-filter, #sort-selector, #limit-selector {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 40px 10px 15px; /* Extra right padding for the arrow */
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    min-width: 140px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 15px center;
+    background-size: 12px;
+    transition: all 0.2s ease-in-out;
+}
+
+/* Hover Effect */
+#borough-filter:hover, #sort-selector:hover, #limit-selector:hover {
+    border-color: var(--primary-blue);
+    background-color: var(--card-bg);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
+
+/* Focus/active effect */
+#borough-filter:focus, #sort-selector:focus, #limit-selector:focus {
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 3px rgba(30, 60, 114, 0.1);
+}
+
+/* Dark mode Overrides  */
+body.dark-mode #borough-filter,
+body.dark-mode #sort-selector,
+body.dark-mode #limit-selector {
+    background-color: #2c2c2c;
+    border-color: #444;
+    color: #e0e0e0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ccc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+body.dark-mode #borough-filter:hover,
+body.dark-mode #sort-selector:hover,
+body.dark-mode #limit-selector:hover {
+    background-color: #383838;
+    border-color: #64b5f6;
+}
+
+/* Mobile */
+@media (max-width: 1024px) {
+    body { overflow: auto; height: auto; }
+    .app-wrapper { flex-direction: column; height: auto; }
+    .sidebar { width: 100%; height: auto; padding: 1rem; flex-direction: row; align-items: center; }
+    .nav-links { flex-direction: row; margin: 0; }
+    .content { height: auto; overflow: visible; padding: 1rem; gap: 1rem; }
+    .chart-grid { grid-template-columns: 1fr; height: auto; }
+    .kpi-row { grid-template-columns: 1fr; }
+    #analytics-view .chart-card { max-width: 100%; }
+}
